@@ -81,6 +81,13 @@ export const BADGE_NFT_ABI = [
 
 export const QUEST_VAULT_ABI = [
   {
+    inputs: [],
+    name: 'asset',
+    outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
     inputs: [
       { internalType: 'uint256', name: 'assets', type: 'uint256' },
       { internalType: 'address', name: 'receiver', type: 'address' },
