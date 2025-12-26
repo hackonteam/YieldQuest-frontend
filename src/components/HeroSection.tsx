@@ -3,6 +3,7 @@ import { formatUnits } from 'viem';
 import { Sparkles, Zap, Clock, TrendingUp, Play, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CONTRACTS, QUEST_VAULT_ABI } from '@/lib/wagmi-config';
+import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
 
 interface HeroSectionProps {
   onConnectClick?: () => void;
@@ -39,6 +40,7 @@ export function HeroSection({ onConnectClick }: HeroSectionProps) {
 
   const status = getQuestStatus();
   const claimableXPValue = claimableXP ? parseFloat(formatUnits(claimableXP, 18)) : 0;
+  const animatedXP = useAnimatedNumber(claimableXPValue, { duration: 600, decimals: 4 });
 
   const statusConfig = {
     not_connected: {
@@ -73,21 +75,26 @@ export function HeroSection({ onConnectClick }: HeroSectionProps) {
   return (
     <div className={`relative overflow-hidden rounded-2xl border p-6 md:p-8 mb-8 transition-all duration-500 ${
       status === 'active' 
-        ? 'bg-gradient-to-br from-primary/20 via-primary/10 to-accent/10 border-primary/30 animate-pulse-glow' 
+        ? 'bg-gradient-to-br from-primary/20 via-primary/10 to-accent/5 border-primary/40 shadow-lg shadow-primary/10' 
         : 'bg-gradient-to-br from-primary/10 via-transparent to-transparent border-border/50'
     }`}>
       {/* Background pattern */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent pointer-events-none" />
       
+      {/* Animated glow for active state */}
+      {status === 'active' && (
+        <div className="absolute inset-0 bg-primary/5 animate-pulse pointer-events-none" />
+      )}
+      
       <div className="relative animate-fade-in">
         {/* Status Badge */}
         {config.badge && (
-          <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium mb-4 ${
+          <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium mb-4 border transition-all duration-500 ${
             config.badge.variant === 'active'
-              ? 'bg-primary/20 text-primary border border-primary/30'
-              : 'bg-muted text-muted-foreground border border-border'
+              ? 'bg-primary/20 text-primary border-primary/30'
+              : 'bg-muted text-muted-foreground border-border'
           }`}>
-            <span className={`h-2 w-2 rounded-full ${
+            <span className={`h-2 w-2 rounded-full transition-all duration-300 ${
               config.badge.variant === 'active' ? 'bg-primary animate-pulse' : 'bg-muted-foreground'
             }`} />
             {config.badge.text}
@@ -101,28 +108,36 @@ export function HeroSection({ onConnectClick }: HeroSectionProps) {
           {config.subtitle}
         </p>
         
-        {/* Active Quest Stats */}
+        {/* Active Quest Stats - Animated Numbers */}
         {status === 'active' && (
           <div className="flex flex-wrap gap-4 mb-6 animate-fade-in">
-            <div className="flex items-center gap-2 rounded-lg bg-card/80 px-4 py-3 border border-border/50">
-              <Clock className="h-5 w-5 text-primary" />
+            <div className="flex items-center gap-3 rounded-lg bg-card/80 px-4 py-3 border border-border/50 backdrop-blur-sm">
+              <Clock className="h-5 w-5 text-primary animate-pulse" />
               <div>
-                <p className="text-xs text-muted-foreground">Time Elapsed</p>
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="text-sm font-semibold text-foreground">Yield Accruing</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 rounded-lg bg-card/80 px-4 py-3 border border-border/50 backdrop-blur-sm">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-xs text-muted-foreground">Progress</p>
                 <p className="text-sm font-semibold text-foreground">Active</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 rounded-lg bg-card/80 px-4 py-3 border border-border/50">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-xs text-muted-foreground">Yield Generating</p>
-                <p className="text-sm font-semibold text-foreground">In Progress</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg bg-primary/10 px-4 py-3 border border-primary/30">
-              <Sparkles className="h-5 w-5 text-primary" />
+            <div className={`flex items-center gap-3 rounded-lg px-4 py-3 border backdrop-blur-sm transition-all duration-300 ${
+              claimableXPValue > 0 
+                ? 'bg-primary/15 border-primary/30' 
+                : 'bg-card/80 border-border/50'
+            }`}>
+              <Sparkles className={`h-5 w-5 ${claimableXPValue > 0 ? 'text-primary' : 'text-muted-foreground'}`} />
               <div>
                 <p className="text-xs text-muted-foreground">XP Available</p>
-                <p className="text-sm font-bold text-primary">{claimableXPValue.toFixed(4)}</p>
+                <p className={`text-sm font-bold font-mono tabular-nums transition-transform duration-300 ${
+                  claimableXPValue > 0 ? 'text-primary' : 'text-foreground'
+                } ${animatedXP.isAnimating ? 'scale-105' : 'scale-100'}`}>
+                  {animatedXP.formattedValue}
+                </p>
               </div>
             </div>
           </div>
