@@ -9,6 +9,7 @@ import { CONTRACTS, QUEST_VAULT_ABI, ERC20_ABI } from '@/lib/wagmi-config';
 import { Swords, Play, Sparkles, Loader2, CheckCircle2, Circle, ArrowDownToLine, ArrowUpFromLine, Clock, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
+import { useTokenInfo } from '@/hooks/useTokenInfo';
 
 type QuestStatus = 'idle' | 'active' | 'completed';
 
@@ -19,13 +20,16 @@ export function VaultPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
 
-  // Read user's token balance
+  // Get dynamic token info (address, decimals, symbol)
+  const { assetAddress, decimals, symbol } = useTokenInfo();
+
+  // Read user's token balance using dynamic asset address
   const { data: tokenBalance, refetch: refetchTokenBalance } = useReadContract({
-    address: CONTRACTS.UNDERLYING_TOKEN,
+    address: assetAddress,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address && !!assetAddress },
   });
 
   // Read user's vault shares
@@ -53,13 +57,13 @@ export function VaultPanel() {
     query: { enabled: !!address },
   });
 
-  // Read allowance
+  // Read allowance using dynamic asset address
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: CONTRACTS.UNDERLYING_TOKEN,
+    address: assetAddress,
     abi: ERC20_ABI,
     functionName: 'allowance',
     args: address ? [address, CONTRACTS.QUEST_VAULT] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address && !!assetAddress },
   });
 
   // Convert shares to assets
@@ -73,10 +77,10 @@ export function VaultPanel() {
 
   const { writeContractAsync } = useWriteContract();
 
-  // Calculate raw values
-  const depositedValue = depositedAssets ? parseFloat(formatUnits(depositedAssets, 18)) : 0;
-  const claimableXPValue = claimableXP ? parseFloat(formatUnits(claimableXP, 18)) : 0;
-  const tvlValue = totalAssets ? parseFloat(formatUnits(totalAssets, 18)) : 0;
+  // Calculate raw values using dynamic decimals
+  const depositedValue = depositedAssets ? parseFloat(formatUnits(depositedAssets, decimals)) : 0;
+  const claimableXPValue = claimableXP ? parseFloat(formatUnits(claimableXP, 18)) : 0; // XP uses 18 decimals
+  const tvlValue = totalAssets ? parseFloat(formatUnits(totalAssets, decimals)) : 0;
 
   // Animated numbers
   const animatedDeposit = useAnimatedNumber(depositedValue, { duration: 600, decimals: 4 });
@@ -111,12 +115,12 @@ export function VaultPanel() {
     setIsLoading(true);
     
     try {
-      const amount = parseUnits(depositAmount, 18);
+      const amount = parseUnits(depositAmount, decimals);
 
       if (!allowance || allowance < amount) {
         toast.info('Approving tokens...');
         await writeContractAsync({
-          address: CONTRACTS.UNDERLYING_TOKEN,
+          address: assetAddress,
           abi: ERC20_ABI,
           functionName: 'approve',
           args: [CONTRACTS.QUEST_VAULT, amount],
@@ -148,7 +152,7 @@ export function VaultPanel() {
     setIsLoading(true);
     
     try {
-      const amount = parseUnits(withdrawAmount, 18);
+      const amount = parseUnits(withdrawAmount, decimals);
       
       toast.info('Completing Quest...');
       await writeContractAsync({
@@ -320,7 +324,7 @@ export function VaultPanel() {
           <AnimatedStat 
             label="Deposited" 
             value={animatedDeposit.formattedValue} 
-            suffix="tokens"
+            suffix={symbol}
             isAnimating={animatedDeposit.isAnimating}
           />
           <AnimatedStat 
@@ -394,7 +398,7 @@ export function VaultPanel() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Quest Resources</span>
                 <span className="text-muted-foreground font-mono">
-                  Available: {tokenBalance ? parseFloat(formatUnits(tokenBalance, 18)).toFixed(4) : '0'}
+                  Available: {tokenBalance ? parseFloat(formatUnits(tokenBalance, decimals)).toFixed(2) : '0'} {symbol}
                 </span>
               </div>
               <div className="flex gap-2">
@@ -407,7 +411,7 @@ export function VaultPanel() {
                 />
                 <Button
                   variant="outline"
-                  onClick={() => tokenBalance && setDepositAmount(formatUnits(tokenBalance, 18))}
+                  onClick={() => tokenBalance && setDepositAmount(formatUnits(tokenBalance, decimals))}
                 >
                   Max
                 </Button>
@@ -433,7 +437,7 @@ export function VaultPanel() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Withdraw Amount</span>
                 <span className="text-muted-foreground font-mono">
-                  Deposited: {depositedValue.toFixed(4)}
+                  Deposited: {depositedValue.toFixed(2)} {symbol}
                 </span>
               </div>
               <div className="flex gap-2">
@@ -446,7 +450,7 @@ export function VaultPanel() {
                 />
                 <Button
                   variant="outline"
-                  onClick={() => depositedAssets && setWithdrawAmount(formatUnits(depositedAssets, 18))}
+                  onClick={() => depositedAssets && setWithdrawAmount(formatUnits(depositedAssets, decimals))}
                 >
                   Max
                 </Button>
