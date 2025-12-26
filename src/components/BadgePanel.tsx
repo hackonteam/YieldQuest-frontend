@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { useAccount, useReadContract } from 'wagmi';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CONTRACTS, BADGE_NFT_ABI } from '@/lib/wagmi-config';
@@ -9,41 +10,43 @@ const BADGE_TYPES = [
     id: 1, 
     name: 'First Deposit', 
     icon: Shield, 
-    description: 'Begin your journey',
-    unlockCondition: 'Complete your first deposit'
+    description: 'Journey begun',
+    unlockCondition: 'Complete first deposit'
   },
   { 
     id: 2, 
     name: 'Yield Hunter', 
     icon: Zap, 
-    description: 'Earn XP from yield',
+    description: 'Yield mastery',
     unlockCondition: 'Earn 100 XP from yield'
   },
   { 
     id: 3, 
     name: 'Diamond Hands', 
     icon: Gem, 
-    description: 'Patience rewarded',
+    description: 'Patience proven',
     unlockCondition: 'Hold for 30 days'
   },
   { 
     id: 4, 
     name: 'Whale', 
     icon: Crown, 
-    description: 'Major contributor',
+    description: 'Major player',
     unlockCondition: 'Deposit 1000+ tokens'
   },
   { 
     id: 5, 
     name: 'Level Master', 
     icon: Star, 
-    description: 'Reach new heights',
+    description: 'Heights reached',
     unlockCondition: 'Reach Level 5'
   },
 ];
 
 export function BadgePanel() {
   const { address, isConnected } = useAccount();
+  const [newlyUnlocked, setNewlyUnlocked] = useState<number[]>([]);
+  const previousBalance = useRef<number>(0);
 
   const { data: badgeBalance } = useReadContract({
     address: CONTRACTS.BADGE_NFT,
@@ -54,6 +57,22 @@ export function BadgePanel() {
   });
 
   const unlockedCount = badgeBalance ? Number(badgeBalance) : 0;
+
+  // Detect newly unlocked badges
+  useEffect(() => {
+    if (unlockedCount > previousBalance.current) {
+      const newBadges: number[] = [];
+      for (let i = previousBalance.current; i < unlockedCount; i++) {
+        newBadges.push(i);
+      }
+      setNewlyUnlocked(newBadges);
+      
+      // Clear animation after delay
+      const timer = setTimeout(() => setNewlyUnlocked([]), 800);
+      return () => clearTimeout(timer);
+    }
+    previousBalance.current = unlockedCount;
+  }, [unlockedCount]);
 
   if (!isConnected) {
     return (
@@ -95,11 +114,11 @@ export function BadgePanel() {
               <Award className="h-5 w-5 text-primary" />
               Achievements
             </CardTitle>
-            <CardDescription>Soulbound badges earned on your journey</CardDescription>
+            <CardDescription>Soulbound badges — permanent on-chain proof</CardDescription>
           </div>
           <div className="flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 border border-primary/20">
             <Award className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold text-primary">
+            <span className="text-sm font-bold text-primary font-mono">
               {unlockedCount} / {BADGE_TYPES.length}
             </span>
           </div>
@@ -109,31 +128,41 @@ export function BadgePanel() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
           {BADGE_TYPES.map((badge, index) => {
             const isUnlocked = index < unlockedCount;
+            const isNewlyUnlocked = newlyUnlocked.includes(index);
             const IconComponent = badge.icon;
 
             return (
               <div
                 key={badge.id}
-                className={`group relative flex flex-col items-center rounded-xl border p-4 transition-all duration-300 ${
+                className={`group relative flex flex-col items-center rounded-xl border p-4 transition-all duration-400 ${
                   isUnlocked
-                    ? 'border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary/60'
-                    : 'border-border bg-muted/20 hover:bg-muted/30'
-                }`}
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border bg-muted/20'
+                } ${isNewlyUnlocked ? 'animate-scale-in' : ''}`}
               >
+                {/* Unlocked glow effect */}
+                {isUnlocked && (
+                  <div className={`absolute inset-0 rounded-xl bg-primary/10 transition-opacity duration-300 ${
+                    isNewlyUnlocked ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'
+                  } pointer-events-none`} />
+                )}
+
                 {/* Unlocked checkmark */}
                 {isUnlocked && (
-                  <div className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold shadow-md animate-scale-in">
+                  <div className={`absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold shadow-md transition-transform duration-300 ${
+                    isNewlyUnlocked ? 'scale-110' : 'scale-100'
+                  }`}>
                     ✓
                   </div>
                 )}
 
                 {/* Icon */}
                 <div
-                  className={`flex h-14 w-14 items-center justify-center rounded-full transition-all duration-300 ${
+                  className={`relative flex h-14 w-14 items-center justify-center rounded-full transition-all duration-400 ${
                     isUnlocked
                       ? 'bg-primary text-primary-foreground shadow-lg'
-                      : 'bg-muted text-muted-foreground group-hover:bg-muted/80'
-                  }`}
+                      : 'bg-muted text-muted-foreground'
+                  } ${isNewlyUnlocked ? 'scale-110 shadow-xl' : 'scale-100'}`}
                 >
                   {isUnlocked ? (
                     <IconComponent className="h-7 w-7" />
@@ -144,7 +173,7 @@ export function BadgePanel() {
 
                 {/* Badge Name */}
                 <span
-                  className={`mt-3 text-sm font-semibold text-center ${
+                  className={`relative mt-3 text-sm font-semibold text-center transition-colors duration-300 ${
                     isUnlocked ? 'text-foreground' : 'text-muted-foreground'
                   }`}
                 >
@@ -152,16 +181,11 @@ export function BadgePanel() {
                 </span>
 
                 {/* Description / Unlock Condition */}
-                <span className={`text-xs text-center mt-1 ${
-                  isUnlocked ? 'text-muted-foreground' : 'text-muted-foreground/70'
+                <span className={`text-xs text-center mt-1 transition-colors duration-300 ${
+                  isUnlocked ? 'text-muted-foreground' : 'text-muted-foreground/60'
                 }`}>
                   {isUnlocked ? badge.description : badge.unlockCondition}
                 </span>
-
-                {/* Glow effect for unlocked */}
-                {isUnlocked && (
-                  <div className="absolute inset-0 rounded-xl bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                )}
               </div>
             );
           })}
@@ -170,7 +194,7 @@ export function BadgePanel() {
         {/* Progress hint */}
         {unlockedCount < BADGE_TYPES.length && (
           <p className="text-xs text-muted-foreground text-center mt-6 italic">
-            Keep questing to unlock more achievements. Each badge is a permanent on-chain proof of your progress.
+            Each badge is permanent proof of your on-chain journey.
           </p>
         )}
       </CardContent>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount, useReadContract, useWriteContract } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CONTRACTS, QUEST_VAULT_ABI, ERC20_ABI } from '@/lib/wagmi-config';
-import { Swords, Play, Sparkles, Loader2, CheckCircle2, Circle, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { Swords, Play, Sparkles, Loader2, CheckCircle2, Circle, ArrowDownToLine, ArrowUpFromLine, Clock, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
 
 type QuestStatus = 'idle' | 'active' | 'completed';
 
@@ -16,6 +17,7 @@ export function VaultPanel() {
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [justCompleted, setJustCompleted] = useState(false);
 
   // Read user's token balance
   const { data: tokenBalance, refetch: refetchTokenBalance } = useReadContract({
@@ -71,15 +73,31 @@ export function VaultPanel() {
 
   const { writeContractAsync } = useWriteContract();
 
+  // Calculate raw values
+  const depositedValue = depositedAssets ? parseFloat(formatUnits(depositedAssets, 18)) : 0;
+  const claimableXPValue = claimableXP ? parseFloat(formatUnits(claimableXP, 18)) : 0;
+  const tvlValue = totalAssets ? parseFloat(formatUnits(totalAssets, 18)) : 0;
+
+  // Animated numbers
+  const animatedDeposit = useAnimatedNumber(depositedValue, { duration: 600, decimals: 4 });
+  const animatedXP = useAnimatedNumber(claimableXPValue, { duration: 600, decimals: 4 });
+  const animatedTVL = useAnimatedNumber(tvlValue, { duration: 600, decimals: 2 });
+
   const getQuestStatus = (): QuestStatus => {
+    if (justCompleted) return 'completed';
     if (!vaultShares || vaultShares === 0n) return 'idle';
     return 'active';
   };
 
   const questStatus = getQuestStatus();
-  const depositedValue = depositedAssets ? parseFloat(formatUnits(depositedAssets, 18)) : 0;
-  const claimableXPValue = claimableXP ? parseFloat(formatUnits(claimableXP, 18)) : 0;
-  const tvlValue = totalAssets ? parseFloat(formatUnits(totalAssets, 18)) : 0;
+
+  // Clear completed state after animation
+  useEffect(() => {
+    if (justCompleted) {
+      const timer = setTimeout(() => setJustCompleted(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [justCompleted]);
 
   const refetchAll = () => {
     refetchTokenBalance();
@@ -140,7 +158,8 @@ export function VaultPanel() {
         args: [amount, address, address],
       } as any);
       
-      toast.success('Quest Completed! Assets withdrawn.');
+      setJustCompleted(true);
+      toast.success('Quest Completed! XP secured.');
       setWithdrawAmount('');
       refetchAll();
     } catch (e: any) {
@@ -173,26 +192,74 @@ export function VaultPanel() {
 
   const StatusBadge = ({ status }: { status: QuestStatus }) => {
     const config = {
-      idle: { icon: Circle, text: 'Idle', className: 'bg-muted text-muted-foreground' },
-      active: { icon: Play, text: 'Active', className: 'bg-primary/20 text-primary' },
-      completed: { icon: CheckCircle2, text: 'Completed', className: 'bg-accent text-accent-foreground' },
+      idle: { 
+        icon: Circle, 
+        text: 'Idle', 
+        className: 'bg-muted text-muted-foreground border-border',
+        pulse: false 
+      },
+      active: { 
+        icon: Play, 
+        text: 'Active · Yield Accruing', 
+        className: 'bg-primary/20 text-primary border-primary/30',
+        pulse: true 
+      },
+      completed: { 
+        icon: CheckCircle2, 
+        text: 'Completed', 
+        className: 'bg-accent text-accent-foreground border-accent/30',
+        pulse: false 
+      },
     };
-    const { icon: Icon, text, className } = config[status];
+    const { icon: Icon, text, className, pulse } = config[status];
     
     return (
-      <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${className}`}>
+      <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium border transition-all duration-500 ${className}`}>
+        <span className={`h-2 w-2 rounded-full ${
+          status === 'active' ? 'bg-primary' : 
+          status === 'completed' ? 'bg-accent-foreground' : 'bg-muted-foreground'
+        } ${pulse ? 'animate-pulse' : ''}`} />
         <Icon className="h-3 w-3" />
         {text}
       </div>
     );
   };
 
+  // Animated Number Display Component
+  const AnimatedStat = ({ 
+    label, 
+    value, 
+    suffix = '', 
+    isAnimating,
+    highlight = false 
+  }: { 
+    label: string; 
+    value: string; 
+    suffix?: string;
+    isAnimating: boolean;
+    highlight?: boolean;
+  }) => (
+    <div className={`rounded-xl p-4 text-center transition-all duration-300 ${
+      highlight 
+        ? 'bg-primary/10 border-2 border-primary/30' 
+        : 'bg-card border border-border'
+    }`}>
+      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
+      <p className={`text-2xl font-bold font-mono tabular-nums transition-transform duration-300 ${
+        highlight ? 'text-primary' : 'text-foreground'
+      } ${isAnimating ? 'scale-105' : 'scale-100'}`}>
+        {value}
+      </p>
+      {suffix && <p className="text-xs text-muted-foreground">{suffix}</p>}
+    </div>
+  );
+
   if (!isConnected) {
     return (
       <Card id="quest-vault" className="border-border/50 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-muted/50 to-transparent pointer-events-none" />
         <CardHeader className="relative">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <CardTitle className="flex items-center gap-2">
               <Swords className="h-5 w-5 text-primary" />
               Yield Quest · Vault Mission
@@ -214,51 +281,82 @@ export function VaultPanel() {
   return (
     <Card id="quest-vault" className={`relative overflow-hidden transition-all duration-500 ${
       questStatus === 'active' 
-        ? 'border-primary/30 shadow-lg' 
+        ? 'border-primary/40 shadow-lg shadow-primary/10' 
+        : questStatus === 'completed'
+        ? 'border-accent/40 shadow-lg shadow-accent/10'
         : 'border-border/50'
     }`}>
-      {/* Active quest glow effect */}
-      {questStatus === 'active' && (
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent pointer-events-none" />
-      )}
+      {/* Background gradient based on state */}
+      <div className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${
+        questStatus === 'active' 
+          ? 'bg-gradient-to-br from-primary/10 via-primary/5 to-transparent opacity-100' 
+          : questStatus === 'completed'
+          ? 'bg-gradient-to-br from-accent/10 via-accent/5 to-transparent opacity-100'
+          : 'opacity-0'
+      }`} />
       
       <CardHeader className="relative">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <CardTitle className="flex items-center gap-2">
-            <Swords className="h-5 w-5 text-primary" />
+            <Swords className={`h-5 w-5 text-primary transition-all duration-300 ${
+              questStatus === 'active' ? 'animate-pulse' : ''
+            }`} />
             Yield Quest · Vault Mission
           </CardTitle>
           <StatusBadge status={questStatus} />
         </div>
+        
+        {/* Quest completion message */}
+        {questStatus === 'completed' && (
+          <p className="text-sm text-accent-foreground font-medium mt-2 animate-fade-in">
+            Quest completed · XP secured
+          </p>
+        )}
       </CardHeader>
 
       <CardContent className="relative space-y-6">
-        {/* Quest Stats - Large & Prominent */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="rounded-xl bg-card border border-border p-4 text-center">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Deposited</p>
-            <p className={`text-2xl font-bold text-foreground ${depositedValue > 0 ? 'animate-number-pop' : ''}`}>
-              {depositedValue.toFixed(2)}
-            </p>
-            <p className="text-xs text-muted-foreground">tokens</p>
-          </div>
-          <div className="rounded-xl bg-card border border-border p-4 text-center">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Vault TVL</p>
-            <p className="text-2xl font-bold text-foreground">{tvlValue.toFixed(2)}</p>
-            <p className="text-xs text-muted-foreground">total locked</p>
-          </div>
-          <div className={`rounded-xl p-4 text-center transition-all duration-300 ${
-            claimableXPValue > 0 
-              ? 'bg-primary/10 border-2 border-primary/30' 
-              : 'bg-card border border-border'
-          }`}>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">XP Available</p>
-            <p className={`text-2xl font-bold ${claimableXPValue > 0 ? 'text-primary' : 'text-foreground'}`}>
-              {claimableXPValue.toFixed(2)}
-            </p>
-            <p className="text-xs text-muted-foreground">claimable</p>
-          </div>
+        {/* Quest Stats - Large & Animated */}
+        <div className="grid grid-cols-3 gap-3">
+          <AnimatedStat 
+            label="Deposited" 
+            value={animatedDeposit.formattedValue} 
+            suffix="tokens"
+            isAnimating={animatedDeposit.isAnimating}
+          />
+          <AnimatedStat 
+            label="Vault TVL" 
+            value={animatedTVL.formattedValue} 
+            suffix="total locked"
+            isAnimating={animatedTVL.isAnimating}
+          />
+          <AnimatedStat 
+            label="XP Available" 
+            value={animatedXP.formattedValue} 
+            suffix="claimable"
+            isAnimating={animatedXP.isAnimating}
+            highlight={claimableXPValue > 0}
+          />
         </div>
+
+        {/* Active Quest Stats */}
+        {questStatus === 'active' && (
+          <div className="flex flex-wrap gap-3 animate-fade-in">
+            <div className="flex items-center gap-2 rounded-lg bg-card/80 px-3 py-2 border border-border">
+              <Clock className="h-4 w-4 text-primary animate-pulse" />
+              <div>
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="text-sm font-medium text-foreground">Yield Accruing</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg bg-card/80 px-3 py-2 border border-border">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              <div>
+                <p className="text-xs text-muted-foreground">Progress</p>
+                <p className="text-sm font-medium text-foreground">Active</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Claim XP Button - Prominent when available */}
         {claimableXPValue > 0 && (
@@ -266,15 +364,16 @@ export function VaultPanel() {
             <Button
               onClick={handleClaimXP}
               disabled={isLoading}
-              className="w-full gap-2 h-12 text-base animate-pulse-glow"
+              className="w-full gap-2 h-12 text-base relative overflow-hidden group"
               size="lg"
             >
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary-foreground/10 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
               {isLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
                 <Sparkles className="h-5 w-5" />
               )}
-              Claim {claimableXPValue.toFixed(2)} XP
+              Claim {animatedXP.formattedValue} XP
             </Button>
           </div>
         )}
@@ -294,7 +393,7 @@ export function VaultPanel() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Quest Resources</span>
-                <span className="text-muted-foreground">
+                <span className="text-muted-foreground font-mono">
                   Available: {tokenBalance ? parseFloat(formatUnits(tokenBalance, 18)).toFixed(4) : '0'}
                 </span>
               </div>
@@ -304,6 +403,7 @@ export function VaultPanel() {
                   placeholder="Amount to deposit"
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(e.target.value)}
+                  className="font-mono"
                 />
                 <Button
                   variant="outline"
@@ -332,7 +432,7 @@ export function VaultPanel() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Withdraw Amount</span>
-                <span className="text-muted-foreground">
+                <span className="text-muted-foreground font-mono">
                   Deposited: {depositedValue.toFixed(4)}
                 </span>
               </div>
@@ -342,6 +442,7 @@ export function VaultPanel() {
                   placeholder="Amount to withdraw"
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
+                  className="font-mono"
                 />
                 <Button
                   variant="outline"
@@ -372,9 +473,9 @@ export function VaultPanel() {
           </TabsContent>
         </Tabs>
 
-        {/* Quest Tip */}
+        {/* Microcopy */}
         <p className="text-xs text-muted-foreground text-center italic">
-          Tip: Patience earns more XP. The longer you quest, the more you progress.
+          Time is your most valuable resource. Keep questing.
         </p>
       </CardContent>
     </Card>
